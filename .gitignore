@@ -1,0 +1,11 @@
+data/*data*
+data/info.json
+
+*.pth
+*.pyc
+*log.txt
+client_cache/*.json
+run_client.sh
+log_files/*
+*.png
+nohup.out
