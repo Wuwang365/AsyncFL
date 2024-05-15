@@ -53,7 +53,7 @@ def train_core(net,loader,cuda,delay,cfg,epoch=None)->nn.Module:
                 
             output = net(data)
             loss = cross_loss(output,label)
-            
+            # print(label)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

@@ -2,7 +2,7 @@ import glob
 import json
 import random
 
-paths = glob.glob("traindata/*")
+paths = glob.glob("train_bmp/*")
 clients = [path.split('/')[-1] for path in paths]
 info = {}
 delay = [0]

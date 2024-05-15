@@ -9,3 +9,4 @@ run_client.sh
 log_files/*
 *.png
 nohup.out
+*.bmp

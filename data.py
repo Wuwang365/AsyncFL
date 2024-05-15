@@ -18,7 +18,7 @@ class CIFAR_10_Dataset(Dataset):
         return self.data[index][0],self.data[index][1]
     
     def load_data(self,path):
-        names = glob.glob(f'{path}/*/*.png')
+        names = glob.glob(f'{path}/*/*.bmp')
         for name in names:
             label = int(name.split('/')[-2])
             label = torch.tensor(label)

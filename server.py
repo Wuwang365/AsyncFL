@@ -19,8 +19,8 @@ server_status = Server_Status()
 def req_cfg():
     config = {
         "epoch": 2,
-        "lr": 1e-3,
-        "batch_size": 256
+        "lr": 1e-2,
+        "batch_size": 32
     }
     return pickle.dumps(config)
 
