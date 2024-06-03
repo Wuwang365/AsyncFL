@@ -10,3 +10,7 @@ log_files/*
 *.png
 nohup.out
 *.bmp
+
+relation
+
+exp_test_model.py

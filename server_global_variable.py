@@ -29,6 +29,11 @@ class Server_Status(object):
     MODEL_CACHE = ''
     CLASS_NUM = 10
     SAVE_PATH = ''
+    CLUSTER_2_CLIENT_NAMES = {}
+    CLUSTER_2_WEIGHT = {}
+    CLUSTER_NUM = 5 # TODO: add args
+    FEEDBACK = deque(maxlen=50)
+    KL_DATA  = ""
     
     def __init__(self):
         pass

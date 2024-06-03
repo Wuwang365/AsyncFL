@@ -25,42 +25,79 @@ class SameContrastiveLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
     def forward(self,x1):
-        x1 = x1[:,0]
-        return torch.sum(torch.abs(1-x1))
+        return torch.mean(torch.abs(1-x1))
 
 class DiffContrastiveLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
     def forward(self,x1):
-        x1 = x1[:,0]
-        return torch.sum(torch.abs(x1))
-        
-def train_core(net,loader,cuda,delay,cfg,epoch=None)->nn.Module:
+        return torch.mean(torch.abs(x1))
+
+import torch.nn.functional as F
+class LogitNormLoss(nn.Module):
+
+    def __init__(self, device, t=1.0):
+        super(LogitNormLoss, self).__init__()
+        self.device = device
+        self.t = t
+
+    def forward(self, x, target):
+        norms = torch.norm(x, p=2, dim=-1, keepdim=True) + 1e-7
+        logit_norm = torch.div(x, norms) / self.t
+        return F.cross_entropy(logit_norm, target)
+
+def train_core(net,loader,out_loader,cuda,delay,cfg,name,epoch=None)->nn.Module:
     net = net.cuda(cuda)
     net = net.train()
 
     cross_loss = CrossEntropyLoss()
+    same_loss = SameContrastiveLoss()
+    diff_loss = DiffContrastiveLoss()
     
     optimizer = torch.optim.SGD(net.parameters(),lr = cfg["lr"])
     
     if epoch==None:
         epoch = cfg['epoch']
+        
+    correct = 0
+    total = 0
+
+    for batch_num, (data, label) in enumerate(loader):
+        data = data.cuda(cuda)
+        label = label.cuda(cuda)
+        output = net(data)
+        _, predicted = torch.max(output, 1)
+        correct += (predicted == label).sum().item()
+        total += label.size(0)
+    feedback = correct / total
+    logging.error(f"Accurcy of client {name} is {feedback}")
     
     for epoch in range(epoch):            
         for batch_num,(data,label) in enumerate(loader):
             data = data.cuda(cuda)
             label = label.cuda(cuda)
-                
+
             output = net(data)
-            loss = cross_loss(output,label)
+            # _,in_out = net(data,deci=True)
+            cross = cross_loss(output,label)
+            # same = same_loss(in_out)
+            
+            # for (data,label) in loader:
+            #     data = data.cuda(cuda)
+            #     _,in_out_o = net(data,deci=True)
+            #     diff = diff_loss(in_out_o)
+            #     break
+            
+            loss = cross
             # print(label)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            # print(f"{cross.item()}  {same.item()}  {diff.item()}")
             
         time.sleep(delay)
         
-    return net
+    return net,feedback
 
 
 def compute_accuracy(possibility, label):
@@ -95,9 +132,9 @@ def url_build_core(serverIp,serverPort):
     return f'http://{serverIp}:{serverPort}/server'
 
 import random
-def req_model_core(serverIp,serverPort):
+def req_model_core(serverIp,serverPort,name):
     url = f'{url_build_core(serverIp,serverPort)}/req_model'
-    data = {}
+    data = {"name":name}
     while(True):
         try:
             r = requests.post(url,data=pickle.dumps(data))
@@ -116,12 +153,13 @@ def info_build_core(datainfo):
         info = json.loads(f.read())
     return info
 
-def send_model_core(serverIp,serverPort,model,name,cuda):
+def send_model_core(serverIp,serverPort,model,feedback,name,cuda):
     url = f'{url_build_core(serverIp,serverPort)}/send_model'
     data = {
         'name':name,
         'model':model,
         'cuda':cuda,
+        'feedback':feedback
     }
     data = pickle.dumps(data)
     resp = requests.post(url,data)
@@ -155,6 +193,7 @@ class Client():
         self.dataroot = args.dataroot
         self.datainfo = args.datainfo
         self.cuda = int(args.cuda)
+        self.feedback = 0
         
         self.info = self.info_build()
         self.delay = self.delay_build()
@@ -162,24 +201,29 @@ class Client():
         
         self.cfg = self.req_cfg()
         self.loader = self.loader_build()
+        self.out_loader = self.out_loader_build()
         self.model = self.req_model()
         
     
     def run_train(self):
-        local_model = self.train()
-        self.send_model(local_model)
+        local_model,feedback = self.train()
+        self.send_model(local_model,feedback)
     
     def info_build(self):
         return info_build_core(self.datainfo)
     
     def req_model(self):
-        return req_model_core(self.ip,self.port)
+        return req_model_core(self.ip,self.port,self.name)
     
     def req_cfg(self):
         return req_cfg_core(self.ip,self.port)
     
     def loader_build(self):
         data_path = f"{self.dataroot}/{self.name}"
+        return loader_build_core(data_path,self.cfg)
+    
+    def out_loader_build(self):
+        data_path = f"data/KL_data"#TODO: add in config
         return loader_build_core(data_path,self.cfg)
     
     def label_list_build(self):
@@ -190,10 +234,10 @@ class Client():
         return delay_build_core(self.name,self.info)
     
     def train(self):
-        return train_core(self.model,self.loader,self.cuda,self.delay,self.cfg)
+        return train_core(self.model,self.loader,self.out_loader,self.cuda,self.delay,self.cfg,self.name)
     
-    def send_model(self,model):
-        return send_model_core(self.ip,self.port,model,self.name,self.cuda)
+    def send_model(self,model,feedback):
+        return send_model_core(self.ip,self.port,model,feedback,self.name,self.cuda)
     
         
     

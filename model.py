@@ -105,7 +105,7 @@ class ResidualBlock(nn.Module):
 # 定义ResNet模型
 import torch
 class ResNet(nn.Module):
-    def __init__(self,num_classes=10):
+    def __init__(self,num_class=10):
         super(ResNet, self).__init__()
         block = ResidualBlock
         num_blocks = [2,2,2,2]
@@ -117,7 +117,7 @@ class ResNet(nn.Module):
         self.layer3 = self.make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self.make_layer(block, 512, num_blocks[3], stride=2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512, num_classes)
+        self.fc = nn.Linear(512, num_class)
     
     def make_layer(self, block, out_channels, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -138,3 +138,87 @@ class ResNet(nn.Module):
         out = self.fc(x1)
         # out = torch.sigmoid(out)
         return out
+    
+class SimpleNet(nn.Module):
+    def __init__(self,num_class=10) -> None:
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels=3,out_channels=64,kernel_size=7,stride=3,padding=1)
+        self.conv2 = nn.Conv2d(in_channels=64,out_channels=128,kernel_size=3,stride=1,padding=1)
+        self.pool = nn.AvgPool2d(stride=2,kernel_size=3,padding=1)
+        self.fc = nn.Linear(512,num_class)
+        
+        
+    def forward(self,x):
+        x1 = self.conv1(x)
+        x2 = self.pool(x1)
+        x3 = self.conv2(x2)
+        x4 = self.pool(x3)
+        x5 = self.pool(x4)
+        x6 = x5.view(x5.size(0),-1)
+        x7 = self.fc(x6)
+        F.softmax(x7, dim=1)
+        return x7
+    
+    
+class SimpleCNN(nn.Module):
+    def __init__(self, num_class=10):
+        super(SimpleCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc = nn.Linear(32 * 8 * 8, num_class)
+        self.fc_2 = nn.Linear(32*8*8,32*8)
+        self.fc_3 = nn.Linear(32*8,32*8)
+        self.fc_4 = nn.Linear(32*8,1)
+        
+
+    def forward(self, x, deci=False):
+        out = self.conv1(x)
+        out = self.relu1(out)
+        out = self.pool1(out)
+        out = self.conv2(out)
+        out = self.relu2(out)
+        out = self.pool2(out)
+        feat = out.view(out.size(0), -1)
+        out = self.fc(feat)
+        if deci:
+            feat = feat.detach()
+            in_out = self.fc_2(feat)
+            in_out = self.fc_3(in_out)
+            in_out = self.fc_4(in_out)
+            return out,in_out
+        return out
+    
+    
+class CIFAR10Net(nn.Module):
+    def __init__(self,num_class=10):
+        super(CIFAR10Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
+        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
+        self.fc1 = nn.Linear(512 * 2 * 2, 1024)
+        self.fc2 = nn.Linear(1024, 512)
+        self.fc3 = nn.Linear(512, 10)
+        self.dropout = nn.Dropout(0.5)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = self.pool(x)
+        x = F.relu(self.conv2(x))
+        x = self.pool(x)
+        x = F.relu(self.conv3(x))
+        x = self.pool(x)
+        x = F.relu(self.conv4(x))
+        x = self.pool(x)
+        x = x.view(-1, 512 * 2 * 2)
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc3(x)
+        return F.log_softmax(x, dim=1)

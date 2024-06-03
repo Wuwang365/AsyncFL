@@ -55,12 +55,13 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--logname',default='log_files',help='log file name')
 parser.add_argument('--info',default='data/info.json',help='info path')
-parser.add_argument("--parallelnum",default=5,help='parallel number of training clients')
+parser.add_argument("--parallelnum",default=8,help='parallel number of training clients')
 parser.add_argument("--classnum",default=10)
-parser.add_argument("--testroot",default='data/testdata')
-parser.add_argument("--cuda",default=0)
-parser.add_argument("--port",default=13597)
-parser.add_argument("--savepath",default='modeldir',help = 'model save path')
+parser.add_argument("--testroot",default='data/test_bmp')
+parser.add_argument("--cuda",default=1)
+parser.add_argument("--port",default=13275)
+parser.add_argument("--savepath",default='models',help = 'model save path')
+parser.add_argument("--KLroot",default='data/test_bmp')
 
 from server import test
 
@@ -68,7 +69,8 @@ def exp_test_wapper(server_status):
     while(True):
         sleep(3)
         test(server_status)
-    
+
+from server import merge_cluster
 
 if __name__=="__main__":
     server_status = Server_Status()
@@ -80,7 +82,9 @@ if __name__=="__main__":
     init_server(args)
     set_dictConfig(args.logname)
     t1 = threading.Thread(target=exp_test_wapper,args=(server_status,))
+    t2 = threading.Thread(target=merge_cluster,args=(server_status,))
     t1.start()
+    t2.start()
     with torch.no_grad():
         run_app(args.port)
     
