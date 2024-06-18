@@ -53,14 +53,14 @@ from server_global_variable import Server_Status
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--logname',default='log_files',help='log file name')
+parser.add_argument('--logname',default='test',help='log file name')
 parser.add_argument('--info',default='data/info.json',help='info path')
-parser.add_argument("--parallelnum",default=5,help='parallel number of training clients')
+parser.add_argument("--parallelnum",default=8,help='parallel number of training clients')
 parser.add_argument("--classnum",default=10)
 parser.add_argument("--testroot",default='data/testdata')
-parser.add_argument("--cuda",default=0)
-parser.add_argument("--port",default=13597)
-parser.add_argument("--savepath",default='modeldir',help = 'model save path')
+parser.add_argument("--cuda",default=3)
+parser.add_argument("--port",default=25589)
+parser.add_argument("--savepath",default='models',help = 'model save path')
 
 from server import test
 

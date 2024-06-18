@@ -1,7 +1,6 @@
 import threading
 import torch.nn as nn
 from torch.utils.data.dataloader import DataLoader
-from model import ResNet as Model
 from flask import Blueprint, request
 import json
 import time
@@ -9,18 +8,24 @@ import pickle
 from server_global_variable import Server_Status
 import logging
 import copy
+from model import SimpleCNN as Model
 
 server_app = Blueprint("server", __name__, url_prefix="/server")
 
 server_status = Server_Status()
 
 
-@server_app.route("/req_cfg", methods=["GET"])
+@server_app.route("/req_cfg", methods=["POST"])
 def req_cfg():
+    client_info = pickle.loads(request.data)
+    label = random.choice(client_info["label_list"])
+    result_label = balance_core(server_status.TRAIN_COUNT,client_info["label_list"])
     config = {
-        "epoch": 2,
+        "epoch": 5,
         "lr": 1e-2,
-        "batch_size": 32
+        "batch_size": 32,
+        "label":result_label,
+        "center":server_status.PREDEFINE_CENTER[label]
     }
     return pickle.dumps(config)
 
@@ -31,14 +36,18 @@ def send_model():
     net = client_info["model"].cpu()
     name = client_info['name']
     cuda = client_info['cuda']
+    label = client_info['label']
+    feature = client_info['feature']
     server_status._instance_lock.acquire()
-    send_model_core(net,name,cuda,server_status)
+    send_model_core(net,name,cuda,label,feature,server_status)
     server_status._instance_lock.release()
     return pickle.dumps("")
 
 @server_app.route("/req_model", methods=["POST"])
 def req_model():
-    return server_status.MODEL_ENCODE
+    client_info = pickle.loads(request.data)
+    label = int(client_info["label"])
+    return server_status.MODEL_ENCODE_LIST[label]
 
 @server_app.route('/req_train',methods=['POST'])
 def req_train():
@@ -53,6 +62,16 @@ def req_train():
 
 
 import shutil
+
+
+def balance_core(cluster_list,label_list):
+    max_value = max(cluster_list)
+    result = -1
+    for i in range(len(cluster_list)):
+        if cluster_list[i]<=max_value and i in label_list:
+            result = i
+            max_value = cluster_list[i]
+    return result
 
 def req_train_core(name,server_status:Server_Status):
     train_tag = {
@@ -77,10 +96,11 @@ def init_savepath_core(savepath,server_status:Server_Status):
     if not os.path.exists(savepath):
         os.makedirs(savepath)
     server_status.SAVE_PATH = savepath
-    
+
+
+
 def init_model_core(server_status:Server_Status):
-    model = Model(num_classes=10)
-    server_status.MODEL_ENCODE = pickle.dumps(model)
+    server_status.MODEL_ENCODE_LIST = [pickle.dumps(Model()) for i in range(server_status.CLASS_NUM)]
 
 def init_names_core(server_status:Server_Status):
     server_status.DATA_NAMES = list(server_status.DATA_INFO.keys())
@@ -88,15 +108,21 @@ def init_names_core(server_status:Server_Status):
 def init_parallel_number_core(parallel_num,server_status:Server_Status):
     server_status.PARALLEL_NUM = parallel_num
     
-def send_model_core(model, name,cuda,server_status:Server_Status):
-    asyn_round_core(model, name,cuda,server_status)
+def send_model_core(model, name,cuda,label,feature,server_status:Server_Status):
+    asyn_round_core(model, name,cuda,label,feature,server_status)
     
     
 import random    
-def asyn_round_core(model,name,cuda,server_status:Server_Status):
-    main_model = pickle.loads(server_status.MODEL_ENCODE)
+def asyn_round_core(model,name,cuda,label,feature,server_status:Server_Status):
+    main_model = pickle.loads(server_status.MODEL_ENCODE_LIST[label])
     server_status.ROUND+=1
-    server_status.MODEL_ENCODE = pickle.dumps(aggregate_core(main_model,model))
+    server_status.TRAIN_COUNT[label]+=1
+    server_status.MODEL_ENCODE_LIST[label] = pickle.dumps(aggregate_core(main_model,model))
+    server_status.FEATURE_CENTER_UPDATE_NUM[label] +=1
+    if server_status.FEATURE_CENTER[label]==None:
+        server_status.FEATURE_CENTER[label] = feature
+    else:
+        server_status.FEATURE_CENTER[label] = server_status.FEATURE_CENTER[label]+feature
     server_status.TRAINING_NAMES.remove(name)
     server_status.CUDA_LIST.append(cuda)
     train_able_pool = [name for name in server_status.DATA_NAMES if name not in server_status.TRAINING_NAMES]
@@ -105,7 +131,7 @@ def asyn_round_core(model,name,cuda,server_status:Server_Status):
     
     
 def aggregate_core(server_model:nn.Module,local_model:nn.Module,coe=0.5)->nn.Module:
-    result_model = Model(num_classes=10)
+    result_model = Model()
     server_model:nn.Module = server_model.cpu()
     local_model = local_model.cpu()
     dictKeys = result_model.state_dict().keys()
@@ -127,6 +153,13 @@ def init_class_num_core(class_num,server_status:Server_Status):
 def init_cuda_core(cuda,server_status:Server_Status):
     server_status.CUDA = cuda
     server_status.CUDA_LIST = [server_status.CUDA]*server_status.PARALLEL_NUM
+    
+def init_feature_center_core(server_status:Server_Status):
+    server_status.FEATURE_CENTER = [None]*server_status.CLASS_NUM
+    server_status.FEATURE_CENTER_UPDATE_NUM = [0]*server_status.CLASS_NUM
+
+def init_train_count_core(server_status:Server_Status):
+    server_status.TRAIN_COUNT = [0]*server_status.CLASS_NUM
 
 def init_server(args):
     server_status = Server_Status()
@@ -139,6 +172,8 @@ def init_server(args):
     init_names_core(server_status)
     init_model_core(server_status)
     init_round_names_core(server_status)
+    init_feature_center_core(server_status)
+    init_train_count_core(server_status)
     
 
 
@@ -146,11 +181,11 @@ def init_server(args):
 #####             Framework experiment tools        #####
 #########################################################
 def test(server_status:Server_Status,model=None):
-
-    model = pickle.loads(server_status.MODEL_ENCODE)
+    model_list = [pickle.loads(i) for i in server_status.MODEL_ENCODE_LIST]
     loader = test_loader_build_core(server_status)
+    feature_centers = [None]*server_status.CLASS_NUM
     with torch.no_grad():
-        acc = test_core(model,loader,server_status.CUDA,server_status.SAVE_PATH)
+        acc = test_core(model_list,loader,server_status.CUDA,server_status.SAVE_PATH,feature_centers)
     test_log_core(acc,server_status)
 
 
@@ -160,18 +195,22 @@ def test_loader_build_core(server_status:Server_Status):
     loader = DataLoader(dataset, batch_size=500, shuffle=True,pin_memory=True)
     return loader
 
-def test_core(model:nn.Module,loader,cuda,save_path):
+def test_core(model_list:nn.Module,loader,cuda,save_path,feature_centers):
     acc = 0
-    num = 0
-    model = model.cuda(cuda)
-    for batch_num,(image,label) in enumerate(loader):
-        num += 1
-        image = image.cuda(cuda)
-        label = label.cuda(cuda)
-        output = model(image)
-        acc+= compute_accuracy(output,label)
-    acc = acc/num
-    torch.save(model,f'{save_path}/result.pth')
+    for i in range(len(model_list)):
+        model_list[i] = model_list[i].cuda(cuda)
+    with torch.no_grad():
+        for batch_num,(image,label) in enumerate(loader):
+            output = []
+            for model in model_list:
+                image = image.cuda(cuda)
+                label = label.cuda(cuda)
+                output.append(model(image,True)[:,0])
+            output = torch.stack(output,dim=1)
+            acc+= compute_accuracy(output,label)
+    acc = acc/len(loader.dataset)
+    for i in range(len(model_list)):
+        torch.save(model_list[i],f'{save_path}/{i}.pth')
     return acc
 
 def test_log_core(acc,server_status:Server_Status):
@@ -183,11 +222,13 @@ def test_log_core(acc,server_status:Server_Status):
     ))
 
 import torch
+import torch.nn.functional as F
+
 def compute_accuracy(possibility, label):
-    sample_num = label.size(0)
+    possibility = possibility - torch.mean(possibility,dim=0,keepdim=True)
     _, index = torch.max(possibility, 1)
     correct_num = torch.sum(label == index)
-    return (correct_num/sample_num).item()
+    return correct_num
 
 import os
 def check_network():
