@@ -79,8 +79,7 @@ class Class_Wise_Con_Dataset(Dataset):
         
         target_names = glob.glob(f'{path}/{target}/*.png')
         names = glob.glob(f'{path}/*/*.png')
-        random.shuffle(target_names)
-        random.shuffle(names)
+        
         count = 0
         for name in target_names:
             count+=1
@@ -88,11 +87,18 @@ class Class_Wise_Con_Dataset(Dataset):
             img = test_transform(img)
             label = torch.tensor(0)
             self.target_data.append((img,label))
-        non_count = 0
         for name in names:
-            if not(name in target_names) and non_count<count:
-                non_count+=1
+            if not(name in target_names):
                 img = Image.open(name)
                 img = test_transform(img)
                 label = torch.tensor(1)
                 self.non_target_data.append((img,label))
+        while len(self.non_target_data)<len(self.target_data):
+            example = random.choice(self.target_data)[0]
+            mean = torch.mean(example)
+            std = torch.std(example)
+            img = torch.normal(mean, std, size=example.shape)
+            label = torch.tensor(1)
+            self.non_target_data.append((img,label))
+        random.shuffle(self.non_target_data)
+        random.shuffle(self.target_data)

@@ -148,8 +148,8 @@ class SimpleCNN(nn.Module):
         self.class_2 = nn.Linear(512,2)
         self.relu = nn.ReLU()
     
-    def forward(self, x, train=False):
-        x = F.relu(self.conv1(x))
+    def forward(self, img, train=False):
+        x = F.relu(self.conv1(img))
         x = F.max_pool2d(x, 2)
         x = F.relu(self.conv2(x))
         x = F.max_pool2d(x, 2)
@@ -160,8 +160,12 @@ class SimpleCNN(nn.Module):
         fc2 = self.fc2(fc1)
         if not train:
             return fc2
+        
         result = self.class_2(fc1)
         return result
+    
+    
+
 
 
 

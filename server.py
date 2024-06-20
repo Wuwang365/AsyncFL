@@ -18,14 +18,12 @@ server_status = Server_Status()
 @server_app.route("/req_cfg", methods=["POST"])
 def req_cfg():
     client_info = pickle.loads(request.data)
-    label = random.choice(client_info["label_list"])
     result_label = balance_core(server_status.TRAIN_COUNT,client_info["label_list"])
     config = {
-        "epoch": 5,
+        "epoch": 0,
         "lr": 1e-2,
         "batch_size": 32,
         "label":result_label,
-        "center":server_status.PREDEFINE_CENTER[label]
     }
     return pickle.dumps(config)
 
@@ -55,7 +53,6 @@ def req_train():
     server_status._instance_lock.acquire()
     train_tag = req_train_core(name,server_status)
     server_status._instance_lock.release()
-    
     return train_tag
 
 
