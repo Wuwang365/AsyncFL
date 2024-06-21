@@ -20,7 +20,7 @@ def req_cfg():
     client_info = pickle.loads(request.data)
     result_label = balance_core(server_status.TRAIN_COUNT,client_info["label_list"])
     config = {
-        "epoch": 0,
+        "epoch": 2,
         "lr": 1e-2,
         "batch_size": 32,
         "label":result_label,

@@ -118,7 +118,7 @@ def train_core(net,loaders,cuda,delay,cfg,epoch=None,name=None)->nn.Module:
             loss.backward()
             optimizer.step()
     
-    for epoch in range(50):
+    for epoch in range(10):
         for batch_num,(data_1,label_1,data_2,label_2) in enumerate(loader_1):
             data_1 = data_1.cuda(cuda)
             label_1 = label_1.cuda(cuda)
